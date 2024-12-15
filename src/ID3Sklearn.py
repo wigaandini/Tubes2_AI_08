@@ -22,9 +22,11 @@ class ID3Sklearn:
         self.model.fit(X, y)
 
     def predict(self, X):
+        X = self._transform(X)
         return self.model.predict(X)
 
     def predict_proba(self, X):
+        X = self._transform(X)
         return self.model.predict_proba(X)
 
     def performance_report(self, X, y):
