@@ -2,9 +2,10 @@ import numpy as np
 from collections import Counter
 
 class KNN:
-    def __init__(self, k=3, metric='euclidean', batch_size=1000):
+    def __init__(self, k=3, metric='euclidean', p=2, batch_size=1000):
         self.k = k
         self.metric = metric.lower()
+        self.p = p  # Added parameter p for Minkowski distance
         self.batch_size = batch_size
         self.X_train = None
         self.y_train = None
@@ -41,6 +42,24 @@ class KNN:
                     axis=2
                 )
             return distances
+            
+        elif self.metric == 'minkowski':
+            distances = np.zeros((X_batch.shape[0], self.X_train.shape[0]), dtype=np.float32)
+            chunk_size = 1000
+
+            for i in range(0, self.X_train.shape[0], chunk_size):
+                end_idx = min(i + chunk_size, self.X_train.shape[0])
+                # Calculate difference matrix
+                diff = X_batch[:, np.newaxis] - self.X_train[i:end_idx]
+                # Apply p-norm formula
+                distances[:, i:end_idx] = np.sum(
+                    np.abs(diff) ** self.p,
+                    axis=2
+                ) ** (1/self.p)
+            return distances
+        
+        else:
+            raise ValueError(f"Unsupported metric: {self.metric}. Choose from 'euclidean', 'manhattan', or 'minkowski'")
 
     def predict(self, X):
         X = np.array(X, dtype=np.float32)
