@@ -86,7 +86,7 @@ class ID3:
             return self.true_branch._classify(sample)
         else:
             return self.false_branch._classify(sample)
-        
+
     def performance_report(self, X, y):
         print("Accuracy:", accuracy_score(y, self.predict(X)))
         print("\nClassification Report:")
