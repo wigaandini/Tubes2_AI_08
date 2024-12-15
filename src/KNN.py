@@ -2,86 +2,88 @@ import numpy as np
 from collections import Counter
 
 class KNN:
-    def __init__(self, k=3, metric='euclidean', p=2): # default value
+    def __init__(self, k=3, metric='euclidean', batch_size=1000):
         self.k = k
         self.metric = metric.lower()
-        self.p = p
-        
-    def _euclidean_distance(self, x1, x2):
-        return np.sqrt(np.sum((x1 - x2) ** 2))
-    
-    def _manhattan_distance(self, x1, x2):
-        return np.sum(np.abs(x1 - x2))
-    
-    def _minkowski_distance(self, x1, x2):
-        return np.power(np.sum(np.power(np.abs(x1 - x2), self.p)), 1/self.p)
-    
-    def _calculate_distance(self, x1, x2):
-        if self.metric == 'euclidean':
-            return self._euclidean_distance(x1, x2)
-        elif self.metric == 'manhattan':
-            return self._manhattan_distance(x1, x2)
-        elif self.metric == 'minkowski':
-            return self._minkowski_distance(x1, x2)
-        else:
-            raise ValueError("Please choose a valid distance metric: 'euclidean', 'manhattan', or 'minkowski'")
-    
+        self.batch_size = batch_size
+        self.X_train = None
+        self.y_train = None
+
     def fit(self, X, y):
-        self.X_train = np.array(X)
+        self.X_train = np.array(X, dtype=np.float32)
         self.y_train = np.array(y)
+        self.classes_ = np.unique(y)
         return self
-    
+
+    def _compute_distances_batch(self, X_batch):
+        if self.metric == 'euclidean':
+            test_norm = np.sum(X_batch**2, axis=1)[:, np.newaxis]
+            train_norm = np.sum(self.X_train**2, axis=1)
+
+            distances = np.zeros((X_batch.shape[0], self.X_train.shape[0]), dtype=np.float32)
+            chunk_size = 1000 
+
+            for i in range(0, self.X_train.shape[0], chunk_size):
+                end_idx = min(i + chunk_size, self.X_train.shape[0])
+                distances[:, i:end_idx] = -2 * np.dot(X_batch, self.X_train[i:end_idx].T)
+
+            distances += test_norm + train_norm
+            return np.sqrt(np.maximum(distances, 0))
+
+        elif self.metric == 'manhattan':
+            distances = np.zeros((X_batch.shape[0], self.X_train.shape[0]), dtype=np.float32)
+            chunk_size = 1000
+
+            for i in range(0, self.X_train.shape[0], chunk_size):
+                end_idx = min(i + chunk_size, self.X_train.shape[0])
+                distances[:, i:end_idx] = np.sum(
+                    np.abs(X_batch[:, np.newaxis] - self.X_train[i:end_idx]),
+                    axis=2
+                )
+            return distances
+
     def predict(self, X):
-        X = np.array(X)
-        y_pred = []
-        
-        for x in X:
-            # hitung jarak antara x dan semua data train
-            distances = []
-            for x_train in self.X_train:
-                dist = self._calculate_distance(x, x_train)
-                distances.append(dist)
-            
-            # cari k index terdekat
-            k_indices = np.argsort(distances)[:self.k]
-            
-            # ambil label dari k index terdekat
-            k_nearest_labels = self.y_train[k_indices]
-            
-            # label yang paling sering muncul
-            most_common = Counter(k_nearest_labels).most_common(1)
-            y_pred.append(most_common[0][0])
-        
-        return np.array(y_pred)
-    
-    def score(self, X, y):
-        y_pred = self.predict(X)
-        return np.mean(y_pred == y)
-    
+        X = np.array(X, dtype=np.float32)
+        predictions = []
+
+        for i in range(0, X.shape[0], self.batch_size):
+            batch_end = min(i + self.batch_size, X.shape[0])
+            X_batch = X[i:batch_end]
+
+            distances = self._compute_distances_batch(X_batch)
+
+            k_nearest_indices = np.argpartition(distances, self.k, axis=1)[:, :self.k]
+            k_nearest_labels = self.y_train[k_nearest_indices]
+
+            batch_predictions = []
+            for labels in k_nearest_labels:
+                batch_predictions.append(Counter(labels).most_common(1)[0][0])
+
+            predictions.extend(batch_predictions)
+
+        return np.array(predictions)
+
     def predict_proba(self, X):
-        X = np.array(X)
-        probabilities = []
-        
-        for x in X:
-            # hitung jarak antara x dan semua data train
-            distances = []
-            for x_train in self.X_train:
-                dist = self._calculate_distance(x, x_train)
-                distances.append(dist)
-            
-            # cari k index terdekat
-            k_indices = np.argsort(distances)[:self.k]
-            
-            # ambil label dari k index terdekat
-            k_nearest_labels = self.y_train[k_indices]
-            
-            # hitung probabilitas masing-masing kelas
-            class_counts = Counter(k_nearest_labels)
-            proba = []
-            for class_label in self.classes_:
-                class_prob = class_counts.get(class_label, 0) / self.k
-                proba.append(class_prob)
-            
-            probabilities.append(proba)
-        
-        return np.array(probabilities)
+        X = np.array(X, dtype=np.float32)
+        all_probabilities = []
+
+        for i in range(0, X.shape[0], self.batch_size):
+            batch_end = min(i + self.batch_size, X.shape[0])
+            X_batch = X[i:batch_end]
+
+            distances = self._compute_distances_batch(X_batch)
+            k_nearest_indices = np.argpartition(distances, self.k, axis=1)[:, :self.k]
+            k_nearest_labels = self.y_train[k_nearest_indices]
+
+            batch_probabilities = []
+            for labels in k_nearest_labels:
+                counts = Counter(labels)
+                probs = [counts.get(label, 0) / self.k for label in self.classes_]
+                batch_probabilities.append(probs)
+
+            all_probabilities.extend(batch_probabilities)
+
+        return np.array(all_probabilities)
+
+    def score(self, X, y):
+        return np.mean(self.predict(X) == y)
