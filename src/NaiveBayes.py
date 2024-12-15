@@ -6,9 +6,9 @@ class NaiveBayes:
         self.y_train = None
         self.attack_cat = None
         self.prior = {}
-        self.likelihood = {}
-    
-    # X harus udah dipreprocess dulu untuk convert numeric ke categorical
+        self.mean = {}
+        self.variance = {}
+
     def fit(self, X, y):
         self.X_train = np.array(X)
         self.y_train = np.array(y)
@@ -18,23 +18,21 @@ class NaiveBayes:
         # hitung probabilitas prior
         self.prior = {cat: np.sum(y == cat) / len(y) for cat in self.attack_cat}
         
-        # hitung probabilitas likelihood
-        # untuk setiap fitur
-        for i in range(self.X_train.shape[1]):
-            self.likelihood[i] = {}
-            # untuk setiap kategori
-            for cat in self.attack_cat:
-                self.likelihood[i][cat] = {}
-                indices = np.where(y == cat)[0]
-                # hitung probabilitas nilai fitur i diberikan kategori cat
-                for value in np.unique(self.X_train[:, i]):
-                    # Laplace smoothing
-                    # numerator ditambah 1, denominator ditambah jumlah nilai unik di fitur i
-                    self.likelihood[i][cat][value] = (
-                        np.sum(self.X_train[indices, i] == value) + 1) / (len(indices) + len(np.unique(self.X_train[:, i])))
+        # hitung mean dan variance untuk setiap fitur dan kategori
+        for cat in self.attack_cat:
+            indices = np.where(y == cat)[0]
+            self.mean[cat] = np.mean(self.X_train[indices], axis=0)
+            self.variance[cat] = np.var(self.X_train[indices], axis=0)
 
         return self
-    
+
+    # Gaussian Probability Density Function.
+    def gaussian_pdf(self, x, mean, var):
+        eps = 1e-9  # smoothing
+        coeff = 1.0 / np.sqrt(2.0 * np.pi * (var + eps))
+        exponent = -((x - mean) ** 2) / (2.0 * (var + eps))
+        return coeff * np.exp(exponent)
+
     def predict(self, X):
         X = np.array(X)
         if X.shape[1] != self.X_train.shape[1]:
@@ -44,11 +42,9 @@ class NaiveBayes:
         for x in X:
             posterior = {}
             for cat in self.attack_cat:
-                # work in the log probability space
-                # When you multiply one small number by another small number, you get a very small number.
                 posterior[cat] = np.log(self.prior[cat])
                 for i in range(self.X_train.shape[1]):
-                    posterior[cat] += np.log(self.likelihood[i][cat].get(x[i], 1 / (len(self.y_train[self.y_train == cat]) + len(np.unique(self.X_train[:, i])))))
+                    posterior[cat] += np.log(self.gaussian_pdf(x[i], self.mean[cat][i], self.variance[cat][i]))
             y_pred.append(max(posterior, key=posterior.get))
         
         return np.array(y_pred)

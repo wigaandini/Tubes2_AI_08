@@ -1,15 +1,8 @@
-from sklearn.naive_bayes import MultinomialNB, GaussianNB, CategoricalNB
+from sklearn.naive_bayes import GaussianNB
 
 class NaiveBayesSKlearn:
-    def __init__(self, model_type='categorical'):
-        if model_type == 'multinomial':
-            self.model = MultinomialNB()
-        elif model_type == 'gaussian':
-            self.model = GaussianNB()
-        elif model_type == 'categorical':
-            self.model = CategoricalNB()
-        else:
-            raise ValueError("model_type harus salah satu dari 'multinomial', 'gaussian', atau 'categorical'")
+    def __init__(self):
+        self.model = GaussianNB()
 
     def fit(self, X, y):
         self.model.fit(X, y)
